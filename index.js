@@ -1,43 +1,48 @@
-const { EmbedBuilder, PermissionFlagsBits, ApplicationCommandOptionType } = require('discord.js');
+const { EmbedBuilder, PermissionFlagsBits, ApplicationCommandOptionType, MessageFlags } = require('discord.js');
 
 const userLogs = new Map();
 const userPunishments = new Map();
 
 module.exports = {
-    name: "NDJ Guard",
-    description: "Anti-RAID com limites dinâmicos e sistema de reset",
+    name: "NDJ Security",
+    description: "Anti-RAID com limites dinâmicos e correções de API",
     init: (bot) => {
-        // Comando para resetar punições
+        // Comando de Reset
         bot.command({
             name: 'reset-punesp',
-            description: 'Reseta o nível de punição de um usuário no Anti-RAID',
-            options: [
-                {
-                    name: 'usuario',
-                    description: 'O usuário para resetar',
-                    type: ApplicationCommandOptionType.User,
-                    required: true
-                }
-            ],
+            description: 'Reseta o nível de punição de um usuário',
+            options: [{
+                name: 'usuario',
+                description: 'O usuário para resetar',
+                type: ApplicationCommandOptionType.User,
+                required: true
+            }],
             run: async (ctx) => {
-                // Apenas quem tem permissão de moderar pode resetar
                 if (!ctx.interaction.member.permissions.has(PermissionFlagsBits.ModerateMembers)) {
-                    return ctx.reply({ content: "❌ Você não tem permissão para resetar punições.", ephemeral: true });
+                    return ctx.reply({ 
+                        content: "❌ Sem permissão.", 
+                        flags: [MessageFlags.Ephemeral] // Correção do aviso de deprecation
+                    });
                 }
 
                 const target = ctx.interaction.options.getUser('usuario');
                 userPunishments.delete(target.id);
                 userLogs.delete(target.id);
 
-                await ctx.reply({ content: `✅ As punições de **${target.tag}** foram resetadas com sucesso!`, ephemeral: true });
+                await ctx.reply({ 
+                    content: `✅ Punições de **${target.tag}** resetadas!`, 
+                    flags: [MessageFlags.Ephemeral] 
+                });
             }
         });
 
-        // Ouvinte de mensagens com verificação de limites dinâmicos
-        bot.on('messageCreate', async (msg) => {
+        // Acessando o client real para ouvir as mensagens
+        const client = bot.client || bot; 
+
+        client.on('messageCreate', async (msg) => {
             if (msg.author.bot || !msg.guild) return;
 
-            // Pega os limites definidos no bot (ou usa um padrão se não existir)
+            // Busca os limites dinâmicos do seu bot.config
             const msgLimit = bot.config?.messagespam || 5;
             const timeLimit = (bot.config?.limitmessagespam || 15) * 1000;
 
@@ -56,12 +61,17 @@ module.exports = {
                     let label = level < 3 ? "1 minuto" : (level < 10 ? "24 horas" : "7 dias");
 
                     try {
+                        // Aplica o timeout
                         await msg.member.timeout(muteTime, `Spam detectado (Nível ${level})`);
-                        await msg.author.send(`⚠️ Você foi mutado em **${msg.guild.name}** por **${label}** devido ao excesso de mensagens.`).catch(() => null);
+                        
+                        // Envia o aviso de spam
+                        await msg.channel.send(`⚠️ **Anti-Spam:** O usuário ${msg.author} foi mutado por **${label}** (Punição Nível ${level}).`);
+                        
+                        await msg.author.send(`Você foi mutado em **${msg.guild.name}** por **${label}**.`).catch(() => null);
+                        
                         userLogs.delete(msg.author.id);
-                        console.log(`[GUARD] ${msg.author.tag} mutado. Limite: ${msgLimit} msgs / ${timeLimit/1000}s.`);
                     } catch (e) {
-                        console.error("[GUARD] Erro ao aplicar punição.");
+                        console.error("[SECURITY] Erro ao aplicar timeout. Verifique as permissões do bot.");
                     }
                 } else {
                     userLogs.set(msg.author.id, userData);
@@ -70,4 +80,3 @@ module.exports = {
         });
     }
 };
-                  
